@@ -1,0 +1,6 @@
+{
+  "name": "YouTube Online Earning Analyzer",
+  "description": "Searches recent YouTube uploads on online earning strategies, analyzes audience comments and sentiment, and compares real-world effectiveness versus hype.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
