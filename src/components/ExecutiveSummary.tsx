@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   ShieldCheck,
   AlertTriangle,
   TrendingUp,
+  TrendingDown,
   CheckCircle2,
   XCircle,
   Users,
@@ -13,8 +14,15 @@ import {
   Zap,
   Target,
   Sparkles,
+  ArrowUpRight,
+  ArrowDownRight,
+  Database,
+  History,
+  Cloud,
 } from 'lucide-react';
 import { ComparisonReport } from '../types';
+import { FeasibilitySentimentChart } from './FeasibilitySentimentChart';
+import { useAuth } from '../context/AuthContext';
 
 interface ExecutiveSummaryProps {
   report: ComparisonReport;
@@ -25,6 +33,8 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
   report,
   onFilterRecommended,
 }) => {
+  const { user, savedAudits } = useAuth();
+
   const avgFeasibility = report.marketRealityOverview?.avgFeasibilityScore || Math.round(
     report.videos.reduce((acc, v) => acc + v.realFeasibilityScore, 0) / (report.videos.length || 1)
   );
@@ -45,6 +55,99 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
     report.videos.reduce((acc, v) => acc + (v.sentimentBreakdown?.negativePercent || 0), 0) / (report.videos.length || 1)
   );
   const totalNeutralPct = Math.max(0, 100 - totalPositivePct - totalNegativePct);
+
+  // Firestore Saved Audits Sentiment Drift Tracker
+  const currentQueryNorm = (report.searchQuery || '').toLowerCase().trim();
+
+  const matchingAudits = useMemo(() => {
+    if (!savedAudits || savedAudits.length === 0) return [];
+    return savedAudits
+      .filter((audit) => {
+        const q = (audit.query || audit.niche || '').toLowerCase().trim();
+        if (!q || !currentQueryNorm) return false;
+        return (
+          q === currentQueryNorm ||
+          currentQueryNorm.includes(q) ||
+          q.includes(currentQueryNorm)
+        );
+      })
+      .sort((a, b) => {
+        const tsA = a.savedAt ? new Date(a.savedAt).getTime() : 0;
+        const tsB = b.savedAt ? new Date(b.savedAt).getTime() : 0;
+        return tsB - tsA;
+      });
+  }, [savedAudits, currentQueryNorm]);
+
+  const sentimentComparison = useMemo(() => {
+    if (matchingAudits.length === 0) {
+      return {
+        hasPriorAudit: false,
+        status: 'no_prior' as const,
+        delta: null,
+        prevScore: null,
+        prevDate: null,
+        auditCount: 0,
+        message: user
+          ? 'First audit recorded in Firestore for this niche. Baseline established.'
+          : 'Sign in to compare against historical Firestore audits.',
+      };
+    }
+
+    const prevAudit = matchingAudits[0];
+    const prevVideos = prevAudit.report?.videos || [];
+    const prevScore = prevVideos.length > 0
+      ? Math.round(
+          prevVideos.reduce((acc: number, v: any) => acc + (v.sentimentBreakdown?.positivePercent || 0), 0) /
+          prevVideos.length
+        )
+      : 50;
+
+    const delta = totalPositivePct - prevScore;
+    let formattedDate = 'Prior Audit';
+    if (prevAudit.savedAt) {
+      try {
+        const dateObj = new Date(prevAudit.savedAt);
+        formattedDate = dateObj.toLocaleDateString(undefined, {
+          month: 'short',
+          day: 'numeric',
+        });
+      } catch {
+        formattedDate = 'Prior Audit';
+      }
+    }
+
+    if (delta >= 5) {
+      return {
+        hasPriorAudit: true,
+        status: 'significantly_improved' as const,
+        delta,
+        prevScore,
+        prevDate: formattedDate,
+        auditCount: matchingAudits.length,
+        message: `Audience sentiment surged by +${delta}% compared to ${formattedDate} saved audit (${prevScore}% → ${totalPositivePct}%).`,
+      };
+    } else if (delta <= -5) {
+      return {
+        hasPriorAudit: true,
+        status: 'significantly_dropped' as const,
+        delta,
+        prevScore,
+        prevDate: formattedDate,
+        auditCount: matchingAudits.length,
+        message: `Audience sentiment dropped by ${delta}% compared to ${formattedDate} saved audit (${prevScore}% → ${totalPositivePct}%). Skepticism is growing.`,
+      };
+    } else {
+      return {
+        hasPriorAudit: true,
+        status: 'steady' as const,
+        delta,
+        prevScore,
+        prevDate: formattedDate,
+        auditCount: matchingAudits.length,
+        message: `Audience sentiment remains steady (${delta >= 0 ? '+' : ''}${delta}% vs ${formattedDate} audit at ${prevScore}%).`,
+      };
+    }
+  }, [matchingAudits, totalPositivePct, user]);
 
   return (
     <section id="executive-summary-section" className="space-y-4">
@@ -145,9 +248,29 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
                   Forensic Market Intelligence & Audience Verdict
                 </h2>
               </div>
-              <span className="text-[10px] font-bold bg-indigo-950 text-indigo-300 border border-indigo-800 px-2.5 py-0.5 rounded-full">
-                Gemini 3.5 Grounded Analysis
-              </span>
+              <div className="flex items-center gap-2 flex-wrap">
+                {sentimentComparison.hasPriorAudit && (
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-2xs ${
+                    sentimentComparison.status === 'significantly_improved'
+                      ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                      : sentimentComparison.status === 'significantly_dropped'
+                      ? 'bg-rose-950 text-rose-300 border border-rose-800'
+                      : 'bg-slate-800 text-slate-300 border border-slate-700'
+                  }`}>
+                    {sentimentComparison.status === 'significantly_improved' && <ArrowUpRight className="w-3 h-3 text-emerald-400 stroke-[2.5]" />}
+                    {sentimentComparison.status === 'significantly_dropped' && <ArrowDownRight className="w-3 h-3 text-rose-400 stroke-[2.5]" />}
+                    {sentimentComparison.status === 'steady' && <Activity className="w-3 h-3 text-indigo-400" />}
+                    <span>
+                      {sentimentComparison.status === 'significantly_improved' ? `+${sentimentComparison.delta}% Sentiment Surge` :
+                       sentimentComparison.status === 'significantly_dropped' ? `${sentimentComparison.delta}% Sentiment Drop` :
+                       `Sentiment Steady (${sentimentComparison.delta! >= 0 ? '+' : ''}${sentimentComparison.delta}%)`}
+                    </span>
+                  </span>
+                )}
+                <span className="text-[10px] font-bold bg-indigo-950 text-indigo-300 border border-indigo-800 px-2.5 py-0.5 rounded-full">
+                  Gemini 3.5 Grounded Analysis
+                </span>
+              </div>
             </div>
             <p className="text-sm text-slate-200 leading-relaxed font-normal">
               {report.summary}
@@ -170,10 +293,53 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
         {/* Right 1 Col: Geometric Sentiment & Consensus Map */}
         <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between">
           <div>
-            <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-4 flex items-center justify-between">
-              <span>Audience Sentiment Map</span>
-              <Users className="w-3.5 h-3.5 text-slate-400" />
-            </h3>
+            <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 text-slate-400" />
+                <span>Audience Sentiment Map</span>
+              </h3>
+
+              {/* Dynamic Firestore Week-over-Week Sentiment Drift Indicator */}
+              {sentimentComparison.status === 'significantly_improved' && (
+                <div
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-300 shadow-2xs animate-pulse"
+                  title={`Previous Firestore audit on ${sentimentComparison.prevDate} had ${sentimentComparison.prevScore}% positive sentiment`}
+                >
+                  <ArrowUpRight className="w-3.5 h-3.5 text-emerald-600 stroke-[2.5]" />
+                  <span>+{sentimentComparison.delta}% vs. Prev Week Audit</span>
+                </div>
+              )}
+
+              {sentimentComparison.status === 'significantly_dropped' && (
+                <div
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-800 border border-rose-300 shadow-2xs animate-pulse"
+                  title={`Previous Firestore audit on ${sentimentComparison.prevDate} had ${sentimentComparison.prevScore}% positive sentiment`}
+                >
+                  <ArrowDownRight className="w-3.5 h-3.5 text-rose-600 stroke-[2.5]" />
+                  <span>{sentimentComparison.delta}% Sentiment Drop</span>
+                </div>
+              )}
+
+              {sentimentComparison.status === 'steady' && (
+                <div
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-800 border border-indigo-200"
+                  title={`Prior audit on ${sentimentComparison.prevDate}: ${sentimentComparison.prevScore}%`}
+                >
+                  <Activity className="w-3 h-3 text-indigo-500" />
+                  <span>Steady ({sentimentComparison.delta! >= 0 ? '+' : ''}{sentimentComparison.delta}%)</span>
+                </div>
+              )}
+
+              {sentimentComparison.status === 'no_prior' && (
+                <div
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200"
+                  title={user ? 'First recorded audit for this niche' : 'Sign in to track cloud history'}
+                >
+                  <Database className="w-3 h-3 text-slate-400" />
+                  <span>Firestore Baseline</span>
+                </div>
+              )}
+            </div>
 
             <div className="grid grid-cols-3 gap-2 text-center">
               <div className="p-2 bg-emerald-50/70 rounded-xl">
@@ -198,13 +364,48 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-100 text-center">
-            <span className="text-xs text-slate-500 font-medium">
-              Calculated across hundreds of audited viewer comments
-            </span>
+          {/* Detailed Dynamic Indicator Context Callout */}
+          <div className="mt-4 pt-3 border-t border-slate-100">
+            <div className={`p-2.5 rounded-xl border text-xs flex items-start gap-2 ${
+              sentimentComparison.status === 'significantly_improved'
+                ? 'bg-emerald-50/90 border-emerald-200 text-emerald-950'
+                : sentimentComparison.status === 'significantly_dropped'
+                ? 'bg-rose-50/90 border-rose-200 text-rose-950'
+                : sentimentComparison.status === 'steady'
+                ? 'bg-indigo-50/60 border-indigo-100 text-indigo-950'
+                : 'bg-slate-50 border-slate-200 text-slate-600'
+            }`}>
+              {sentimentComparison.status === 'significantly_improved' && (
+                <TrendingUp className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              )}
+              {sentimentComparison.status === 'significantly_dropped' && (
+                <TrendingDown className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              )}
+              {sentimentComparison.status === 'steady' && (
+                <Activity className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+              )}
+              {sentimentComparison.status === 'no_prior' && (
+                <History className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+              )}
+              <div className="leading-snug">
+                <span className="font-bold">
+                  {sentimentComparison.status === 'significantly_improved' && 'Sentiment Surge: '}
+                  {sentimentComparison.status === 'significantly_dropped' && 'Sentiment Alert: '}
+                  {sentimentComparison.status === 'steady' && 'Week-over-Week Stable: '}
+                  {sentimentComparison.status === 'no_prior' && 'Cloud Audit Baseline: '}
+                </span>
+                <span>{sentimentComparison.message}</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* D3.js Feasibility vs Sentiment Correlation Line Chart */}
+      <FeasibilitySentimentChart
+        videos={report.videos}
+        timeframe={report.timeframe}
+      />
 
       {/* Top Winner vs Biggest Trap Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
