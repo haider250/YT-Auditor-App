@@ -10,6 +10,8 @@ import { VideoCard } from './components/VideoCard';
 import { SingleVideoAnalyzer } from './components/SingleVideoAnalyzer';
 import { StrategyShowdown } from './components/StrategyShowdown';
 import { ExportModal } from './components/ExportModal';
+import { SavedAuditsModal } from './components/SavedAuditsModal';
+import { useAuth } from './context/AuthContext';
 import {
   Sparkles,
   TrendingUp,
@@ -27,9 +29,13 @@ import {
   BookmarkCheck,
   Zap,
   RotateCcw,
+  Cloud,
+  Check,
 } from 'lucide-react';
 
 export default function App() {
+  const { user, saveAuditToFirestore, toggleFirestoreBookmark, isBookmarked } = useAuth();
+
   // Dynamic report state (initialized from cached live search or null)
   const [report, setReport] = useState<ComparisonReport | null>(() => {
     try {
@@ -56,6 +62,9 @@ export default function App() {
   const [sortBy, setSortBy] = useState<'feasibility' | 'sentiment' | 'recency'>('feasibility');
   const [quickFilter, setQuickFilter] = useState<'all' | 'verified' | 'zero_budget' | 'low_saturation' | 'saved'>('all');
   const [isExportOpen, setIsExportOpen] = useState(false);
+  const [isSavedAuditsOpen, setIsSavedAuditsOpen] = useState(false);
+  const [cloudSaveSuccess, setCloudSaveSuccess] = useState(false);
+  const [isSavingCloud, setIsSavingCloud] = useState(false);
 
   // Search History tracking in localStorage
   const [recentSearches, setRecentSearches] = useState<string[]>(() => {
@@ -67,7 +76,7 @@ export default function App() {
     }
   });
 
-  // Bookmarking / Saved state with localStorage
+  // Local Bookmarking / Saved state
   const [bookmarkedIds, setBookmarkedIds] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('yt_auditor_bookmarks');
@@ -85,10 +94,41 @@ export default function App() {
     }
   }, [bookmarkedIds]);
 
-  const toggleBookmark = (id: string) => {
+  const toggleBookmark = async (id: string) => {
     setBookmarkedIds((prev) =>
       prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
     );
+
+    // If user is authenticated, sync bookmark to Firestore
+    if (user && report) {
+      const vid = report.videos.find((v) => v.id === id);
+      if (vid) {
+        try {
+          await toggleFirestoreBookmark(vid);
+        } catch (e) {
+          console.warn('Could not sync bookmark to Firestore:', e);
+        }
+      }
+    }
+  };
+
+  const handleCloudSaveAudit = async () => {
+    if (!report) return;
+    if (!user) {
+      setErrorMessage('Please sign in with Google to sync audits with your cloud Firestore account.');
+      return;
+    }
+
+    try {
+      setIsSavingCloud(true);
+      await saveAuditToFirestore(report, customKeywords, niche, timeframe);
+      setCloudSaveSuccess(true);
+      setTimeout(() => setCloudSaveSuccess(false), 3000);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Failed to save audit to cloud Firestore.');
+    } finally {
+      setIsSavingCloud(false);
+    }
   };
 
   const saveRecentQuery = (queryText: string) => {
@@ -113,7 +153,7 @@ export default function App() {
     }
   };
 
-  // Run live YouTube search & comment sentiment audit via backend
+  // Run live YouTube search & comment sentiment audit via backend with search grounding
   const handleRunSearch = async (overrideKeywords?: string, overrideNiche?: string) => {
     const targetKeywords = overrideKeywords !== undefined ? overrideKeywords : customKeywords;
     const targetNiche = overrideNiche !== undefined ? overrideNiche : niche;
@@ -219,7 +259,7 @@ export default function App() {
     if (selectedCategoryFilter !== 'All' && v.strategyCategory !== selectedCategoryFilter) return false;
     
     if (quickFilter === 'verified' && !v.isRecommended) return false;
-    if (quickFilter === 'saved' && !bookmarkedIds.includes(v.id)) return false;
+    if (quickFilter === 'saved' && !bookmarkedIds.includes(v.id) && !isBookmarked(v.id)) return false;
     if (quickFilter === 'zero_budget' && !v.startupCapitalNeeded.includes('$0')) return false;
     if (quickFilter === 'low_saturation' && v.saturationLevel !== 'Low') return false;
     
@@ -233,7 +273,7 @@ export default function App() {
     if (sortBy === 'sentiment') {
       return (b.sentimentBreakdown?.positivePercent || 0) - (a.sentimentBreakdown?.positivePercent || 0);
     }
-    return 0; // recency / default order
+    return 0;
   });
 
   const categories = report
@@ -255,6 +295,7 @@ export default function App() {
           setActiveTab('feed');
           setQuickFilter('saved');
         }}
+        onOpenSavedAudits={() => setIsSavedAuditsOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -275,7 +316,7 @@ export default function App() {
           </div>
         )}
 
-        {/* Global Search Controls (Always present for dynamic query input) */}
+        {/* Global Search Controls (Includes Voice Transcriber with Gemini 3.5) */}
         <SearchControls
           niche={niche}
           setNiche={setNiche}
@@ -314,6 +355,39 @@ export default function App() {
         {/* State B: Report Loaded & Active Tab is 'feed' */}
         {report && !isSearching && activeTab === 'feed' && (
           <div className="space-y-6">
+            {/* Cloud Firestore Save Banner */}
+            <div className="bg-white px-4 py-3 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2 text-xs text-slate-600">
+                <Cloud className="w-4 h-4 text-indigo-600" />
+                <span>
+                  {user
+                    ? `Signed in as ${user.email}. Save this entire audit to your Firebase Firestore cloud database.`
+                    : 'Sign in to persist audits & bookmark items to your Firebase cloud account.'}
+                </span>
+              </div>
+
+              {user && (
+                <button
+                  type="button"
+                  onClick={handleCloudSaveAudit}
+                  disabled={isSavingCloud}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                >
+                  {cloudSaveSuccess ? (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Saved to Cloud!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Cloud className="w-3.5 h-3.5" />
+                      <span>{isSavingCloud ? 'Saving...' : 'Save Audit to Cloud'}</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+
             {/* Executive Intelligence Synthesis */}
             <ExecutiveSummary
               report={report}
@@ -329,7 +403,7 @@ export default function App() {
                     Audited YouTube Videos & Comment Consensus ({displayedVideos.length})
                   </h2>
                   <p className="text-xs text-slate-500">
-                    Videos published in {report.timeframe} analyzed against viewer execution reality
+                    Videos published in {report.timeframe} analyzed against viewer execution reality with Gemini search grounding
                   </p>
                 </div>
 
@@ -441,7 +515,7 @@ export default function App() {
                     key={video.id + idx}
                     video={video}
                     rankIndex={idx}
-                    isBookmarked={bookmarkedIds.includes(video.id)}
+                    isBookmarked={bookmarkedIds.includes(video.id) || isBookmarked(video.id)}
                     onToggleBookmark={toggleBookmark}
                   />
                 ))}
@@ -539,6 +613,16 @@ export default function App() {
         />
       )}
 
+      {/* Saved Cloud Audits Modal */}
+      <SavedAuditsModal
+        isOpen={isSavedAuditsOpen}
+        onClose={() => setIsSavedAuditsOpen(false)}
+        onSelectAudit={(selectedReport) => {
+          setReport(selectedReport);
+          setActiveTab('feed');
+        }}
+      />
+
       {/* Footer */}
       <footer className="border-t border-slate-200 bg-white py-6 mt-12 text-center text-xs text-slate-500">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
@@ -546,7 +630,7 @@ export default function App() {
             YouTube Online Earning Analyzer — Live Audience Comment Sentiment & Reality Verification
           </p>
           <p className="text-slate-400">
-            Powered by Google AI Studio & Gemini 3.7 Search Grounding
+            Powered by Google AI Studio, Firebase Auth & Firestore
           </p>
         </div>
       </footer>

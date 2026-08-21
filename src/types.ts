@@ -4,6 +4,21 @@ export interface CommentSnippet {
   comment: string;
   likes?: string;
   category: 'proof_of_success' | 'hidden_catch' | 'saturation_warning' | 'appreciation' | 'scam_alert';
+  timestamp?: string;
+  verifiedStudent?: boolean;
+}
+
+export type VerdictType = 
+  | 'Genuine & Highly Viable'
+  | 'Partially Viable (High Effort)'
+  | 'Overhyped / Extreme Saturation'
+  | 'Clickbait / Misleading Claims'
+  | 'Predatory / Course Funnel Trap';
+
+export interface RedFlagItem {
+  flag: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  explanation: string;
 }
 
 export interface VideoAnalysis {
@@ -23,9 +38,17 @@ export interface VideoAnalysis {
   claimedEarning: string;
   claimedTimeline: string;
   
-  // True reality assessment
+  // True reality assessment & Clickbait Forensic Index
   realFeasibilityScore: number; // 0 - 100
+  clickbaitScore: number; // 0 - 100 (0 = 100% honest, 100 = pure sensationalism)
+  verdict: VerdictType;
   effectivenessRating: 'Highly Effective' | 'Moderately Effective' | 'Low Effectiveness' | 'High Risk / Misleading';
+  
+  // Realistic financial projections vs Guru claims
+  realMedianMonthlyIncome: string; // e.g. "$200 - $800/mo realistic"
+  realTimeCommitment: string; // e.g. "15-20 hrs/week"
+  estimatedViewerSuccessRate: string; // e.g. "12% of serious implementers"
+  
   sentimentBreakdown: {
     positivePercent: number;
     neutralPercent: number;
@@ -39,6 +62,7 @@ export interface VideoAnalysis {
   saturationLevel: 'Low' | 'Medium' | 'High' | 'Extremely Saturated';
   skillPrerequisites: string[];
   hiddenCatches: string[];
+  redFlags?: RedFlagItem[];
   pros: string[];
   cons: string[];
   
@@ -50,8 +74,9 @@ export interface VideoAnalysis {
     actualReality: string;
   };
   
-  // Actionable tips
+  // Actionable tips & alternative honest approach
   actionableRoadmap: string[];
+  honestAlternativeRecommendation?: string;
   isRecommended: boolean;
 }
 
@@ -60,19 +85,29 @@ export interface ComparisonReport {
   timeframe: string;
   searchQuery: string;
   totalAnalyzed: number;
+  marketRealityOverview?: {
+    avgFeasibilityScore: number;
+    avgClickbaitScore: number;
+    legitStrategiesCount: number;
+    trapStrategiesCount: number;
+  };
   topRecommendedStrategy: {
     name: string;
     whyEffective: string;
     targetAudience: string;
+    expectedOutcome: string;
   };
   biggestTrapStrategy: {
     name: string;
     whyMisleading: string;
     commonPitfall: string;
+    hiddenCosts: string;
   };
   strategyComparisonTable: {
     strategyName: string;
     communitySentimentScore: number;
+    feasibilityScore: number;
+    clickbaitLevel: string;
     practicalSuccessRate: string;
     startupCost: string;
     difficulty: 'Beginner' | 'Intermediate' | 'Advanced';

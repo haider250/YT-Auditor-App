@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with saved preferences, queries, and bookmarks",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "email"]
+    },
+    "SavedAudit": {
+      "title": "SavedAudit",
+      "description": "Saved strategy audits, searches, and forensic reports",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "query": { "type": "string" },
+        "niche": { "type": "string" },
+        "timeframe": { "type": "string" },
+        "report": { "type": "object" },
+        "savedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "query", "report"]
+    },
+    "BookmarkedVideo": {
+      "title": "BookmarkedVideo",
+      "description": "Individually bookmarked video audits with comment insights",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "video": { "type": "object" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "video"]
+    }
+  },
+  "rules": [
+    {
+      "collection": "users/{userId}",
+      "allow": {
+        "read": "request.auth != null && request.auth.uid == userId",
+        "write": "request.auth != null && request.auth.uid == userId"
+      }
+    },
+    {
+      "collection": "users/{userId}/savedAudits/{auditId}",
+      "allow": {
+        "read": "request.auth != null && request.auth.uid == userId",
+        "write": "request.auth != null && request.auth.uid == userId"
+      }
+    },
+    {
+      "collection": "users/{userId}/bookmarks/{bookmarkId}",
+      "allow": {
+        "read": "request.auth != null && request.auth.uid == userId",
+        "write": "request.auth != null && request.auth.uid == userId"
+      }
+    }
+  ]
+}

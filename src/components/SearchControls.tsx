@@ -12,6 +12,7 @@ import {
   TrendingUp,
   Flame,
 } from 'lucide-react';
+import { VoiceTranscriber } from './VoiceTranscriber';
 
 interface SearchControlsProps {
   niche: string;
@@ -83,6 +84,11 @@ export const SearchControls: React.FC<SearchControlsProps> = ({
     onSearch(query);
   };
 
+  const handleVoiceTranscription = (spokenText: string) => {
+    setCustomKeywords(spokenText);
+    onSearch(spokenText);
+  };
+
   return (
     <section
       id="search-controls-section"
@@ -92,7 +98,7 @@ export const SearchControls: React.FC<SearchControlsProps> = ({
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Main Search Input */}
-        <div className="flex flex-col md:flex-row gap-3">
+        <div className="flex flex-col md:flex-row gap-3 items-stretch">
           <div className="relative flex-1">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
             <input
@@ -100,19 +106,26 @@ export const SearchControls: React.FC<SearchControlsProps> = ({
               type="text"
               value={customKeywords}
               onChange={(e) => setCustomKeywords(e.target.value)}
-              placeholder="Search any earning strategy, video topic, or creator (e.g. 'Faceless AI Shorts', 'Etsy digital products', 'Ali Abdaal side hustles')..."
-              className="w-full pl-11 pr-10 py-3.5 bg-slate-50 hover:bg-slate-100/70 focus:bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all shadow-inner"
+              placeholder="Search any earning strategy, video topic, or creator (e.g. 'Faceless AI Shorts', 'Etsy digital products')..."
+              className="w-full pl-11 pr-24 py-3.5 bg-slate-50 hover:bg-slate-100/70 focus:bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all shadow-inner"
             />
-            {customKeywords && (
-              <button
-                type="button"
-                onClick={() => setCustomKeywords('')}
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-200/60 cursor-pointer"
-                title="Clear input"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
+            
+            <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
+              {customKeywords && (
+                <button
+                  type="button"
+                  onClick={() => setCustomKeywords('')}
+                  className="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-200/60 cursor-pointer"
+                  title="Clear input"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+              <VoiceTranscriber
+                onTranscriptionComplete={handleVoiceTranscription}
+                disabled={isSearching}
+              />
+            </div>
           </div>
 
           <button
